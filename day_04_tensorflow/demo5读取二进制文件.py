@@ -78,6 +78,35 @@ class CifarReader(object):
         writer.close()
         return None
 
+    def read_from_tfrecords(self):
+        # 1.构造文件队列
+        file_queue = tf.train.string_input_producer([FLAGS.cifar_tfrecords])
+
+        # 2.构造文件阅读器
+        reader = tf.TFRecordReader()
+        key, value = reader.read(file_queue)
+
+        # 3.解析example
+        features = tf.parse_single_example(value, features={
+            "image": tf.FixedLenFeature([], tf.string),
+            "label": tf.FixedLenFeature([], tf.int64),
+        })
+        print(features["image"], features["label"])
+
+        # tf.reshape转换
+        # 4.解码
+        image = tf.decode_raw(features['image'], tf.uint8)
+
+        # 对image的形状进行固定，方便批处理
+        image_reshape = tf.reshape(image, [self.width, self.height, self.channel])
+        label = features['label']
+        print(image_reshape, label)
+
+        # 进行批处理
+        image_batch, label_batch = tf.train.batch([image_reshape, label], 10, 1, 10)
+
+        return image_batch, label_batch
+
 
 if __name__ == '__main__':
     file_name = os.listdir(FLAGS.cifar_fir)
@@ -85,16 +114,18 @@ if __name__ == '__main__':
     filelist = [os.path.join(FLAGS.cifar_fir, file) for file in file_name if file[-3:] == 'bin']
 
     cifarReader = CifarReader(filelist)
-    image_batch, label_batch = cifarReader.read_binary()
+    # image_batch, label_batch = cifarReader.read_binary()
+
+    image_batch, label_batch = cifarReader.read_from_tfrecords()
 
     with tf.Session() as sess:
         coord = tf.train.Coordinator()
         threads = tf.train.start_queue_runners(sess, coord=coord)
 
         # 打印读取出的文件
-        # print(sess.run([image_batch, label_batch]))
+        print(sess.run([image_batch, label_batch]))
         # print("开始存储")
-        cifarReader.write_to_records(image_batch, label_batch)
+        # cifarReader.write_to_records(image_batch, label_batch)
         # print("结束存储")
         coord.request_stop()
         coord.join(threads)
